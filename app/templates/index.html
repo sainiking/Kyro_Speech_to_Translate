@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speech Recognition</title>
+    <h1 style="text-align: right; margin-right: 250px;">Speech Recognition</h1>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            width: 90%;
+            max-width: 12000px;
+            margin: 20px;
+            right: 100px;
+            display: grid;
+            grid-template-columns: 2fr 1fr; /* Main content and sidebar */
+            gap: 100px;
+        }
+        .translation-section {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+        }
+        .input-area, .output-area {
+            width: 48%;
+        }
+        .input-area .buttons {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 100px;
+        }
+        .input-area .buttons form {
+            margin: 10px 0;
+        }
+        .input-area .buttons button {
+            padding: 15px 30px; /* Adjust padding for button size */
+            font-size: 18px; /* Adjust font size for button text */
+            width: 200px; /* Adjust width for button size */
+            height: 50px; /* Adjust height for button size */
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .output-container {
+            position: absolute;
+            right: 700px;
+        }
+        .output-area textarea {
+            width: 200%;
+            height: 300px;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 30px;
+        }
+        .mic-icon {
+            font-size: 40px;
+            color: #007bff;
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+        }
+        .blinking {
+            animation: blink 1s infinite;
+        }
+        @keyframes blink {
+            0% { opacity: 1; }
+            50% { opacity: 0; }
+            100% { opacity: 1; }
+        }
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        .column {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .column h2 {
+            margin: 10px 0;
+        }
+        .column ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        .column li {
+            margin: 5px 0;
+        }
+        .toggle-statistics {
+            position: absolute;
+            top: 20px;
+            right: 250px;
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script type="text/javascript">
+        document.addEventListener('DOMContentLoaded', (event) => {
+            var socket = io.connect('http://' + document.domain + ':' + location.port);
+            var micIcon = document.getElementById("mic-icon");
+            var outputTextArea = document.getElementById("output-text");
+            var mediaStream = null;
+
+            $('#start-recognition-form').submit(function(event) {
+                event.preventDefault();
+                micIcon.classList.add("blinking");
+                outputTextArea.value = "Speak into your microphone. Say 'stop session' to end.";
+                $.ajax({
+                    type: 'POST',
+                    url: '/start_recognition',
+                    success: function(response) {
+                        console.log(response.message);
+                    },
+                    error: function(error) {
+                        console.error('Error starting recognition:', error);
+                    }
+                });
+                navigator.mediaDevices.getUserMedia({ audio: true })
+                    .then(function(stream) {
+                        mediaStream = stream;
+                        // Add your speech recognition start logic here
+                    })
+                    .catch(function(err) {
+                        console.error('Error accessing microphone:', err);
+                    });
+            });
+
+            $('#stop-recognition-form').submit(function(event) {
+                event.preventDefault(); // Prevent the form from submitting the traditional way
+                micIcon.classList.remove("blinking");
+                if (mediaStream) {
+                    mediaStream.getTracks().forEach(track => track.stop());
+                    mediaStream = null;
+                }
+                $.ajax({
+                    type: 'POST',
+                    url: '/stop_recognition',
+                    success: function(response) {
+                        console.log(response.message);
+                    },
+                    error: function(error) {
+                        console.error('Error stopping recognition:', error);
+                    }
+                });
+            });
+
+            socket.on('new_message', function(data) {
+                outputTextArea.value += data.text + "\n"; // Append the new message to the textarea
+                if (data.text.includes("Session ended by user.")) {
+                    micIcon.classList.remove("blinking");
+                    if (mediaStream) {
+                        mediaStream.getTracks().forEach(track => track.stop());
+                        mediaStream = null;
+                    }
+                }
+            });
+
+            // Fetch user statistics
+            $.ajax({
+                type: 'GET',
+                url: '/user_statistics/1', // Replace with the actual user ID
+                success: function(response) {
+                    displayStatistics(response);
+                },
+                error: function(error) {
+                    console.error('Error fetching statistics:', error);
+                }
+            });
+
+            function displayStatistics(data) {
+                var userWords = document.getElementById("user-words");
+                var allWords = document.getElementById("all-words");
+                var userPhrases = document.getElementById("user-phrases");
+
+                data.top_user_words.forEach(function(word) {
+                    var li = document.createElement("li");
+                    li.appendChild(document.createTextNode(word[0] + ": " + word[1]));
+                    userWords.appendChild(li);
+                });
+
+                data.top_all_words.forEach(function(word) {
+                    var li = document.createElement("li");
+                    li.appendChild(document.createTextNode(word[0] + ": " + word[1]));
+                    allWords.appendChild(li);
+                });
+
+                data.top_user_phrases.forEach(function(phrase) {
+                    var li = document.createElement("li");
+                    li.appendChild(document.createTextNode(phrase[0] + ": " + phrase[1]));
+                    userPhrases.appendChild(li);
+                });
+            }
+
+            // Toggle statistics visibility
+            document.getElementById('toggle-statistics').addEventListener('click', function() {
+                var statsContainer = document.getElementById('statistics-container');
+                if (statsContainer.style.display === 'none' || statsContainer.style.display === '') {
+                    statsContainer.style.display = 'block';
+                } else {
+                    statsContainer.style.display = 'none';
+                }
+            });
+        });
+    </script>
+</head>
+<body>
+    <div class="container">
+        <div class="translation-section">
+            <div class="input-area">
+                <div class="buttons">
+                    <form id="start-recognition-form" action="/start_recognition" method="post">
+                        <button type="submit">Start Recognition</button>
+                    </form>
+                    <form id="stop-recognition-form" action="/stop_recognition" method="post">
+                        <button type="submit">Stop Recognition</button>
+                    </form>
+                </div>
+            </div>
+            <div class="output-container">
+                <div class="output-area">
+                    <h2 style="text-align: right;">Output</h2>
+                    <textarea id="output-text" rows="10" cols="50" readonly></textarea>
+                    <i id="mic-icon" class="fas fa-microphone mic-icon"></i>
+                </div>
+            </div>
+        </div>
+        <div class="sidebar" id="statistics-container" style="display: none;">
+            <div class="column">
+                <h2>Top Words Used by User</h2>
+                <ul id="user-words"></ul>
+                <h2>Top Words Used by All Users</h2>
+                <ul id="all-words"></ul>
+            </div>
+            <div class="column">
+                <h2>Top 3 Unique Phrases by User</h2>
+                <ul id="user-phrases"></ul>
+            </div>
+        </div>
+    </div>
+    <button id="toggle-statistics" class="toggle-statistics">Show Statistics</button>
+</body>
+</html>
