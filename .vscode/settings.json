@@ -39,6 +39,6 @@
         "venv.bak{,/**}",
         ".vscode{,/**}"
     ],
-    "appService.defaultWebAppToDeploy": "/subscriptions/b744e06c-1152-487f-bce8-e041a4baed37/resourceGroups/kyro_transcription/providers/Microsoft.Web/sites/transcription",
+    "appService.defaultWebAppToDeploy": "",
     "appService.deploySubpath": "."
 }
